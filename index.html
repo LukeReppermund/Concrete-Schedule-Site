@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Concrete Schedule Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 0 16px;
+        background: #f5f5f5;
+      }
+
+      h1 {
+        margin-bottom: 4px;
+      }
+
+      p {
+        color: #555;
+      }
+
+      .card {
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 16px;
+        margin-top: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      label {
+        display: block;
+        margin-top: 12px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      input[type="date"],
+      input[type="file"],
+      button {
+        margin-top: 6px;
+      }
+
+      button {
+        padding: 8px 12px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .status {
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      pre {
+        background: #eee;
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        max-height: 250px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Concrete Schedule Admin</h1>
+    <p>
+      Upload the daily concrete schedule (Excel) by date. The mobile app will
+      pull the schedule for that date.
+    </p>
+
+    <div class="card">
+      <h2>Upload schedule</h2>
+
+      <label for="date">Schedule date</label>
+      <input id="date" type="date" />
+
+      <label for="file">Excel file (.xlsx)</label>
+      <input id="file" type="file" accept=".xlsx,.xls" />
+
+      <br /><br />
+      <button disabled>Upload (backend coming next)</button>
+
+      <div class="status">
+        ⚠️ Upload button is disabled for now.<br />
+        Next step: we connect this page to a backend that reads Excel.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>What this page will do</h2>
+      <ul>
+        <li>You choose a date</li>
+        <li>You upload the Excel concrete schedule for that date</li>
+        <li>The backend parses each row into placements</li>
+        <li>The mobile app loads that date automatically</li>
+      </ul>
+    </div>
+  </body>
+</html>
