@@ -24,7 +24,7 @@ exports.handler = async (event) => {
     }
 
     const body = JSON.parse(event.body || "{}");
-    const { date, placementId, actualQuantityCY, notes } = body;
+    const { date, placementId, actualQuantityCY, notes, ticketKeys } = body;
 
     if (!date || !placementId) {
       return {
@@ -32,35 +32,43 @@ exports.handler = async (event) => {
         headers: corsHeaders,
         body: JSON.stringify({
           ok: false,
-          error: "Expected: { date:'YYYY-MM-DD', placementId:'...', actualQuantityCY, notes }",
+          error:
+            "Expected: { date:'YYYY-MM-DD', placementId:'...', actualQuantityCY, notes, ticketKeys:[] }",
         }),
       };
     }
 
-    // Load existing actuals map for the date
     const actualsStore = getStore("actuals");
     const key = `actuals:${date}`;
 
     let actuals = await actualsStore.get(key, { type: "json" });
     if (!actuals || typeof actuals !== "object") actuals = {};
 
-    // Save/overwrite the update for this placement
+    const prev = actuals[placementId] || {};
+    const prevTicketKeys = Array.isArray(prev.ticketKeys) ? prev.ticketKeys : [];
+
+    // Merge tickets (keep any previously saved keys)
+    const incomingTicketKeys = Array.isArray(ticketKeys) ? ticketKeys : [];
+    const mergedTicketKeys = Array.from(
+      new Set([...prevTicketKeys, ...incomingTicketKeys])
+    );
+
     actuals[placementId] = {
       actualQuantityCY:
         actualQuantityCY === "" || actualQuantityCY == null
           ? null
           : Number(actualQuantityCY),
       notes: notes || "",
+      ticketKeys: mergedTicketKeys,
       placedAt: new Date().toISOString(),
     };
 
-    // IMPORTANT: store JSON as a string (same pattern as saveSchedule)
     await actualsStore.set(key, JSON.stringify(actuals));
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ ok: true, date, placementId }),
+      body: JSON.stringify({ ok: true, date, placementId, ticketCount: mergedTicketKeys.length }),
     };
   } catch (err) {
     return {
