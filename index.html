@@ -37,12 +37,13 @@
       }
 
       textarea {
-        min-height: 160px;
+        min-height: 220px;
         padding: 10px;
         border-radius: 8px;
         border: 1px solid #ccc;
         font-size: 13px;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        white-space: pre;
       }
 
       button {
@@ -125,32 +126,57 @@
         min-width: 220px;
         flex: 1;
       }
+
+      .miniBtnRow {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .miniBtnRow button {
+        width: auto;
+      }
+
+      .warn {
+        color: #b00020;
+      }
     </style>
   </head>
 
   <body>
     <h1>Concrete Schedule Admin</h1>
     <p>
-      Save the schedule by date. The website will auto-refresh and show what’s been placed from the field app.
+      Paste directly from Excel (tabs supported). Save by date. Field app pulls from this schedule.
     </p>
 
     <div class="card">
-      <div class="topBar">
+      <div class="row">
         <div>
           <label for="date">Schedule date</label>
           <input id="date" type="date" />
+
           <div class="hint" style="margin-top: 10px">
-            Format (one line per placement):<br />
-            <b>time, jobNumber, description, orderedCY</b><br /><br />
-            Example:<br />
-            <code>8:00 AM, K008/15755, Finishing Mill - Coil Handling NW Wall, 60</code>
+            ✅ Best: copy rows from Excel and paste below.
+            <br /><br />
+            Expected columns (in order):
+            <br />
+            <b>time</b> | <b>jobNumber</b> | <b>description</b> | <b>orderedCY (optional)</b>
+            <br /><br />
+            Your Excel paste is TAB-separated. This page detects tabs automatically.
           </div>
+
+          <div class="miniBtnRow">
+            <button id="previewBtn">Preview parse</button>
+            <button id="clearBtn">Clear box</button>
+          </div>
+
+          <div class="status" id="previewStatus"></div>
         </div>
 
         <div>
-          <label for="rows">Paste schedule rows</label>
-          <textarea id="rows" placeholder="Paste rows here..."></textarea>
-          <button id="saveBtn">Save schedule</button>
+          <label for="rows">Paste schedule rows from Excel</label>
+          <textarea id="rows" placeholder="Paste directly from Excel here..."></textarea>
+
+          <button id="saveBtn" style="margin-top: 10px;">Save schedule</button>
           <div class="status" id="saveStatus"></div>
         </div>
       </div>
@@ -176,7 +202,6 @@
       </div>
 
       <div class="status" id="viewStatus"></div>
-
       <div id="tableWrap"></div>
     </div>
 
@@ -188,32 +213,65 @@
         return new Date().toISOString().slice(0, 10);
       }
 
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      // --- CORE: parse Excel paste (TAB-separated), fallback to commas ---
       function parseRowsToPlacements(text, date) {
-        const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+        const lines = text
+          .split("\n")
+          .map((l) => l.replace(/\r/g, "").trim())
+          .filter(Boolean);
 
         const placements = [];
+        let warnings = [];
+
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
 
-          let parts = line.split(",").map((p) => p.trim());
-          if (parts.length < 3) parts = line.split("\t").map((p) => p.trim());
-          if (parts.length < 3) continue;
+          // Prefer TAB split (Excel)
+          let parts = line.split("\t").map((p) => p.trim());
+
+          // Fallback: comma split
+          if (parts.length < 3) {
+            parts = line.split(",").map((p) => p.trim());
+          }
+
+          // If still not enough columns, skip with warning
+          if (parts.length < 3) {
+            warnings.push(`Line ${i + 1}: not enough columns -> "${line}"`);
+            continue;
+          }
 
           const time = parts[0] || "";
           const jobNumber = parts[1] || "";
           const description = parts[2] || "";
-          const orderQuantityCY = parts[3] ? Number(parts[3]) : null;
+
+          // orderedCY: try column 4 if present, else null
+          let orderQuantityCY = null;
+          if (parts[3] != null && parts[3] !== "") {
+            const cleaned = String(parts[3]).replace(/[^\d.\-]/g, "");
+            const n = Number(cleaned);
+            orderQuantityCY = Number.isFinite(n) ? n : null;
+          }
 
           placements.push({
-            id: `${date}-${i + 1}`,
+            id: `${date}-${placements.length + 1}`, // stable ids per date in order
             pourDate: date,
             time,
             jobNumber,
             description,
-            orderQuantityCY: Number.isFinite(orderQuantityCY) ? orderQuantityCY : null
+            orderQuantityCY
           });
         }
-        return placements;
+
+        return { placements, warnings };
       }
 
       function renderTable(placements) {
@@ -224,23 +282,25 @@
           return;
         }
 
-        const rowsHtml = placements.map((p) => {
-          const placed = p.actualQuantityCY != null && p.actualQuantityCY !== "";
-          const pill = placed
-            ? `<span class="pill pillPlaced">PLACED</span>`
-            : `<span class="pill pillOpen">OPEN</span>`;
+        const rowsHtml = placements
+          .map((p) => {
+            const placed = p.actualQuantityCY != null && p.actualQuantityCY !== "";
+            const pill = placed
+              ? `<span class="pill pillPlaced">PLACED</span>`
+              : `<span class="pill pillOpen">OPEN</span>`;
 
-          return `
-            <tr class="${placed ? "placedRow" : ""}">
-              <td>${pill}</td>
-              <td><b>${escapeHtml(p.description || "")}</b><div class="small">${escapeHtml(p.time || "")}</div></td>
-              <td>${escapeHtml(p.jobNumber || "")}</td>
-              <td>${p.orderQuantityCY != null ? `${p.orderQuantityCY}` : "-"}</td>
-              <td>${placed ? `${p.actualQuantityCY}` : "-"}</td>
-              <td>${escapeHtml(p.notes || "")}</td>
-            </tr>
-          `;
-        }).join("");
+            return `
+              <tr class="${placed ? "placedRow" : ""}">
+                <td>${pill}</td>
+                <td><b>${escapeHtml(p.description)}</b><div class="small">${escapeHtml(p.time)}</div></td>
+                <td>${escapeHtml(p.jobNumber)}</td>
+                <td>${p.orderQuantityCY != null ? `${p.orderQuantityCY}` : "-"}</td>
+                <td>${placed ? `${p.actualQuantityCY}` : "-"}</td>
+                <td>${escapeHtml(p.notes || "")}</td>
+              </tr>
+            `;
+          })
+          .join("");
 
         wrap.innerHTML = `
           <table>
@@ -259,15 +319,6 @@
             </tbody>
           </table>
         `;
-      }
-
-      function escapeHtml(str) {
-        return String(str)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
       }
 
       async function loadSchedule(date) {
@@ -291,18 +342,50 @@
         }
       }
 
-      // Save schedule
+      // --- Buttons: preview + clear ---
+      document.getElementById("previewBtn").onclick = () => {
+        const date = document.getElementById("date").value;
+        const rows = document.getElementById("rows").value;
+        const previewStatus = document.getElementById("previewStatus");
+
+        if (!date) {
+          previewStatus.innerHTML = `<span class="warn">Pick a date first.</span>`;
+          return;
+        }
+        if (!rows.trim()) {
+          previewStatus.innerHTML = `<span class="warn">Paste some rows first.</span>`;
+          return;
+        }
+
+        const { placements, warnings } = parseRowsToPlacements(rows, date);
+
+        let msg = `Preview: parsed ${placements.length} placements.`;
+        if (warnings.length) {
+          msg += ` <span class="warn">Warnings: ${warnings.length} line(s) skipped.</span>`;
+        }
+        previewStatus.innerHTML = msg;
+      };
+
+      document.getElementById("clearBtn").onclick = () => {
+        document.getElementById("rows").value = "";
+        document.getElementById("previewStatus").textContent = "";
+        document.getElementById("saveStatus").textContent = "";
+      };
+
+      // --- Save schedule ---
       document.getElementById("saveBtn").onclick = async () => {
         const date = document.getElementById("date").value;
         const rows = document.getElementById("rows").value;
         const status = document.getElementById("saveStatus");
 
-        if (!date) { status.textContent = "Please choose a date."; return; }
-        if (!rows.trim()) { status.textContent = "Please paste some rows."; return; }
+        if (!date) { status.innerHTML = "<span class='warn'>Please choose a date.</span>"; return; }
+        if (!rows.trim()) { status.innerHTML = "<span class='warn'>Please paste some rows.</span>"; return; }
 
-        const placements = parseRowsToPlacements(rows, date);
+        const { placements, warnings } = parseRowsToPlacements(rows, date);
+
         if (placements.length === 0) {
-          status.textContent = "No valid rows found. Each line needs: time, job, description (and optional orderedCY).";
+          status.innerHTML =
+            "<span class='warn'>No valid rows parsed. Make sure you copied rows (time/job/desc).</span>";
           return;
         }
 
@@ -316,21 +399,22 @@
           const json = await res.json();
 
           if (!res.ok || !json.ok) {
-            status.textContent = "Error: " + (json.error || "Unknown error");
+            status.innerHTML = "<span class='warn'>Error: " + (json.error || "Unknown") + "</span>";
             return;
           }
 
-          status.textContent = `Saved ${json.count} placements for ${json.date}.`;
+          status.innerHTML = `Saved ${json.count} placements for ${json.date}.` +
+            (warnings.length ? ` <span class="warn">(${warnings.length} row(s) skipped)</span>` : "");
 
-          // Immediately refresh the live view if it matches the date we saved
+          // Refresh live view if viewing the same date
           const viewDate = document.getElementById("viewDate").value;
           if (viewDate === date) loadSchedule(viewDate);
         } catch (e) {
-          status.textContent = "Error: " + e.message;
+          status.innerHTML = "<span class='warn'>Error: " + e.message + "</span>";
         }
       };
 
-      // Live view controls
+      // --- Live view controls ---
       let autoRefreshOn = true;
       let intervalId = null;
 
@@ -363,12 +447,11 @@
         else stopAutoRefresh();
       };
 
-      // Initialize dates
+      // --- Initialize dates + initial load ---
       const t = todayISO();
       document.getElementById("date").value = t;
       document.getElementById("viewDate").value = t;
 
-      // Initial load + auto-refresh
       loadSchedule(t);
       startAutoRefresh();
     </script>
