@@ -8,18 +8,27 @@ const corsHeaders = {
 };
 
 exports.handler = async (event) => {
+  // Handle CORS preflight
   if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders, body: "" };
+    return {
+      statusCode: 204,
+      headers: corsHeaders,
+      body: "",
+    };
   }
 
   try {
+    // REQUIRED for Netlify Blobs
     connectLambda(event);
 
     if (event.httpMethod !== "POST") {
       return {
         statusCode: 405,
         headers: corsHeaders,
-        body: JSON.stringify({ ok: false, error: "Use POST" }),
+        body: JSON.stringify({
+          ok: false,
+          error: "Use POST",
+        }),
       };
     }
 
@@ -33,14 +42,16 @@ exports.handler = async (event) => {
         headers: corsHeaders,
         body: JSON.stringify({
           ok: false,
-          error: "Expected JSON: { date: 'YYYY-MM-DD', placements: [...] }",
+          error:
+            "Expected JSON body: { date: 'YYYY-MM-DD', placements: [...] }",
         }),
       };
     }
 
-    // Ensure each placement has an id (important for tracking actuals later)
-    const normalized = placements.map((p, idx) => ({
-      id: p.id || `${date}-${idx + 1}`,
+    // Normalize placements and ensure IDs exist
+    const normalized = placements.map((p, index) => ({
+      id: p.id || `${date}-${index + 1}`,
+      pourDate: date,
       time: p.time || "",
       jobNumber: p.jobNumber || "",
       description: p.description || "",
@@ -48,8 +59,6 @@ exports.handler = async (event) => {
         p.orderQuantityCY === "" || p.orderQuantityCY == null
           ? null
           : Number(p.orderQuantityCY),
-      pourDate: date,
-      // These fields are updated by the app later:
       actualQuantityCY: null,
       notes: "",
       ticketImages: [],
@@ -57,18 +66,31 @@ exports.handler = async (event) => {
     }));
 
     const scheduleStore = getStore("schedules");
-    await scheduleStore.set(`schedule:${date}`, normalized, { type: "json" });
+
+    // IMPORTANT: store JSON as a STRING
+    await scheduleStore.set(
+      `schedule:${date}`,
+      JSON.stringify(normalized)
+    );
 
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ ok: true, date, count: normalized.length }),
+      body: JSON.stringify({
+        ok: true,
+        date,
+        count: normalized.length,
+      }),
     };
   } catch (err) {
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ ok: false, error: err.message }),
+      body: JSON.stringify({
+        ok: false,
+        error: err.message,
+        stack: err.stack,
+      }),
     };
   }
 };
