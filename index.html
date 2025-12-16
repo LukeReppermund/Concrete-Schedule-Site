@@ -7,7 +7,7 @@
     <style>
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        max-width: 1100px;
+        max-width: 1150px;
         margin: 20px auto;
         padding: 0 16px;
         background: #f5f5f5;
@@ -60,7 +60,7 @@
         grid-template-columns: 1fr;
         gap: 12px;
       }
-      @media (min-width: 880px) {
+      @media (min-width: 900px) {
         .row { grid-template-columns: 1fr 1fr; }
       }
 
@@ -100,21 +100,12 @@
         padding: 2px 8px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
       }
-      .pillPlaced {
-        background: #27ae60;
-        color: white;
-      }
-      .pillOpen {
-        background: #ddd;
-        color: #333;
-      }
+      .pillPlaced { background: #27ae60; color: #fff; }
+      .pillOpen { background: #ddd; color: #333; }
 
-      .small {
-        font-size: 12px;
-        color: #666;
-      }
+      .small { font-size: 12px; color: #666; }
 
       .topBar {
         display: flex;
@@ -122,22 +113,36 @@
         align-items: flex-end;
         flex-wrap: wrap;
       }
-      .topBar > div {
-        min-width: 220px;
-        flex: 1;
-      }
+      .topBar > div { min-width: 220px; flex: 1; }
 
       .miniBtnRow {
         display: flex;
         gap: 8px;
         margin-top: 8px;
       }
-      .miniBtnRow button {
-        width: auto;
-      }
+      .miniBtnRow button { width: auto; }
 
-      .warn {
-        color: #b00020;
+      .warn { color: #b00020; }
+
+      /* Ticket thumbnails */
+      .ticketWrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .ticketThumb {
+        width: 70px;
+        height: 70px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        background: #f0f0f0;
+      }
+      .ticketLink {
+        display: inline-block;
+        font-size: 12px;
+        margin-top: 4px;
       }
     </style>
   </head>
@@ -146,6 +151,7 @@
     <h1>Concrete Schedule Admin</h1>
     <p>
       Paste directly from Excel (tabs supported). Save by date. Field app pulls from this schedule.
+      Website shows PLACED + ticket thumbnails once uploaded.
     </p>
 
     <div class="card">
@@ -155,13 +161,13 @@
           <input id="date" type="date" />
 
           <div class="hint" style="margin-top: 10px">
-            ✅ Best: copy rows from Excel and paste below.
+            ✅ Copy rows from Excel and paste below.
             <br /><br />
             Expected columns (in order):
             <br />
             <b>time</b> | <b>jobNumber</b> | <b>description</b> | <b>orderedCY (optional)</b>
             <br /><br />
-            Your Excel paste is TAB-separated. This page detects tabs automatically.
+            Excel paste is usually TAB-separated — this page detects tabs automatically.
           </div>
 
           <div class="miniBtnRow">
@@ -208,6 +214,7 @@
     <script>
       const saveUrl = "/.netlify/functions/saveSchedule";
       const getUrl = "/.netlify/functions/getSchedule";
+      const getTicketUrl = "/.netlify/functions/getTicket?key=";
 
       function todayISO() {
         return new Date().toISOString().slice(0, 10);
@@ -222,7 +229,7 @@
           .replaceAll("'", "&#039;");
       }
 
-      // --- CORE: parse Excel paste (TAB-separated), fallback to commas ---
+      // --- Parse Excel paste (TAB-separated), fallback to commas ---
       function parseRowsToPlacements(text, date) {
         const lines = text
           .split("\n")
@@ -235,15 +242,9 @@
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
 
-          // Prefer TAB split (Excel)
           let parts = line.split("\t").map((p) => p.trim());
+          if (parts.length < 3) parts = line.split(",").map((p) => p.trim());
 
-          // Fallback: comma split
-          if (parts.length < 3) {
-            parts = line.split(",").map((p) => p.trim());
-          }
-
-          // If still not enough columns, skip with warning
           if (parts.length < 3) {
             warnings.push(`Line ${i + 1}: not enough columns -> "${line}"`);
             continue;
@@ -253,7 +254,6 @@
           const jobNumber = parts[1] || "";
           const description = parts[2] || "";
 
-          // orderedCY: try column 4 if present, else null
           let orderQuantityCY = null;
           if (parts[3] != null && parts[3] !== "") {
             const cleaned = String(parts[3]).replace(/[^\d.\-]/g, "");
@@ -262,7 +262,7 @@
           }
 
           placements.push({
-            id: `${date}-${placements.length + 1}`, // stable ids per date in order
+            id: `${date}-${placements.length + 1}`,
             pourDate: date,
             time,
             jobNumber,
@@ -272,6 +272,24 @@
         }
 
         return { placements, warnings };
+      }
+
+      function ticketThumbsHtml(ticketKeys) {
+        if (!Array.isArray(ticketKeys) || ticketKeys.length === 0) return "";
+
+        const thumbs = ticketKeys
+          .map((k) => {
+            const src = `${getTicketUrl}${encodeURIComponent(k)}`;
+            // Clicking opens full image in a new tab
+            return `
+              <a href="${src}" target="_blank" rel="noopener noreferrer" title="Open ticket">
+                <img class="ticketThumb" src="${src}" alt="ticket" />
+              </a>
+            `;
+          })
+          .join("");
+
+        return `<div class="ticketWrap">${thumbs}</div>`;
       }
 
       function renderTable(placements) {
@@ -289,11 +307,17 @@
               ? `<span class="pill pillPlaced">PLACED</span>`
               : `<span class="pill pillOpen">OPEN</span>`;
 
+            const tickets = ticketThumbsHtml(p.ticketKeys);
+
             return `
               <tr class="${placed ? "placedRow" : ""}">
                 <td>${pill}</td>
-                <td><b>${escapeHtml(p.description)}</b><div class="small">${escapeHtml(p.time)}</div></td>
-                <td>${escapeHtml(p.jobNumber)}</td>
+                <td>
+                  <b>${escapeHtml(p.description)}</b>
+                  <div class="small">${escapeHtml(p.time || "")}</div>
+                  ${tickets}
+                </td>
+                <td>${escapeHtml(p.jobNumber || "")}</td>
                 <td>${p.orderQuantityCY != null ? `${p.orderQuantityCY}` : "-"}</td>
                 <td>${placed ? `${p.actualQuantityCY}` : "-"}</td>
                 <td>${escapeHtml(p.notes || "")}</td>
@@ -307,7 +331,7 @@
             <thead>
               <tr>
                 <th>Status</th>
-                <th>Description</th>
+                <th>Description (tickets)</th>
                 <th>Job</th>
                 <th>Ordered CY</th>
                 <th>Actual CY</th>
@@ -318,6 +342,9 @@
               ${rowsHtml}
             </tbody>
           </table>
+          <div class="small" style="margin-top: 10px;">
+            Tickets: click a thumbnail to open full-size.
+          </div>
         `;
       }
 
@@ -406,7 +433,6 @@
           status.innerHTML = `Saved ${json.count} placements for ${json.date}.` +
             (warnings.length ? ` <span class="warn">(${warnings.length} row(s) skipped)</span>` : "");
 
-          // Refresh live view if viewing the same date
           const viewDate = document.getElementById("viewDate").value;
           if (viewDate === date) loadSchedule(viewDate);
         } catch (e) {
@@ -447,7 +473,7 @@
         else stopAutoRefresh();
       };
 
-      // --- Initialize dates + initial load ---
+      // --- Initialize ---
       const t = todayISO();
       document.getElementById("date").value = t;
       document.getElementById("viewDate").value = t;
