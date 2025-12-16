@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Concrete Schedule Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -12,7 +13,9 @@
       padding: 0 16px;
       background: #f5f5f5;
     }
-    h1 { margin-bottom: 6px; }
+
+    h1 { margin-bottom: 4px; }
+    p { color: #555; }
 
     .card {
       background: #fff;
@@ -22,130 +25,264 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
+    label {
+      font-weight: 700;
+      font-size: 14px;
+      display: block;
+      margin-top: 12px;
+    }
+
+    input[type="date"], textarea, button {
+      margin-top: 6px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 220px;
+      padding: 10px;
+      font-family: monospace;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      white-space: pre;
+    }
+
+    button {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
+      margin-top: 12px;
       font-size: 13px;
     }
+
     th, td {
       border-bottom: 1px solid #eee;
       padding: 10px;
       vertical-align: top;
     }
+
     th {
+      text-align: left;
       font-size: 12px;
       color: #666;
-      text-align: left;
     }
 
-    .placed { background: #e0f7e9; }
-    .btn {
+    .placed {
+      background: #e0f7e9;
+    }
+
+    .deleteBtn {
+      background: #fff;
+      color: #b00020;
+      border: 1px solid #b00020;
+      font-size: 12px;
       padding: 6px 10px;
       border-radius: 6px;
-      border: 1px solid #ccc;
-      background: #fff;
       cursor: pointer;
-      font-size: 12px;
     }
-    .btn-danger {
-      color: #b00020;
-      border-color: #b00020;
+
+    .ticketRow {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
     }
-    .small { font-size: 12px; color: #666; }
+
+    .ticketThumb {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .warn { color: #b00020; }
   </style>
 </head>
 
 <body>
-  <h1>Concrete Schedule Admin</h1>
 
-  <div class="card">
-    <label>Date</label>
-    <input id="viewDate" type="date" />
-    <button class="btn" onclick="load()">Refresh</button>
-    <div class="small" id="status"></div>
-    <div id="table"></div>
-  </div>
+<h1>Concrete Schedule Admin</h1>
+<p>Paste schedule from Excel, save by date, view live status, delete mistakes.</p>
+
+<!-- ADD / EDIT SCHEDULE -->
+<div class="card">
+  <h2>Add / Replace Schedule</h2>
+
+  <label>Schedule Date</label>
+  <input id="scheduleDate" type="date" />
+
+  <label>Paste from Excel (TAB-separated)</label>
+  <textarea id="rows"></textarea>
+
+  <button onclick="preview()">Preview</button>
+  <button onclick="save()">Save Schedule</button>
+
+  <div id="previewStatus" class="status"></div>
+</div>
+
+<!-- LIVE VIEW -->
+<div class="card">
+  <h2>Live Schedule View</h2>
+
+  <label>View Date</label>
+  <input id="viewDate" type="date" />
+  <button onclick="load()">Refresh</button>
+
+  <div id="viewStatus" class="status"></div>
+  <div id="table"></div>
+</div>
 
 <script>
-  const getUrl = "/.netlify/functions/getSchedule";
-  const deleteUrl = "/.netlify/functions/deletePlacement";
+const saveUrl = "/.netlify/functions/saveSchedule";
+const getUrl = "/.netlify/functions/getSchedule";
+const deleteUrl = "/.netlify/functions/deletePlacement";
+const ticketUrl = "/.netlify/functions/getTicket?key=";
 
-  function today() {
-    return new Date().toISOString().slice(0,10);
-  }
+function today() {
+  return new Date().toISOString().slice(0,10);
+}
 
-  async function load() {
-    const date = document.getElementById("viewDate").value;
-    const status = document.getElementById("status");
-    status.textContent = "Loading…";
+document.getElementById("scheduleDate").value = today();
+document.getElementById("viewDate").value = today();
 
-    try {
-      const res = await fetch(`${getUrl}?date=${date}`);
-      const json = await res.json();
+function parse(text, date) {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const placements = [];
 
-      if (!json.ok) {
-        status.textContent = "Error loading schedule";
-        return;
-      }
+  for (let i=0;i<lines.length;i++) {
+    const parts = lines[i].split("\t").map(p => p.trim());
+    if (parts.length < 3) continue;
 
-      status.textContent = `Loaded ${json.placements.length} placements`;
-      render(json.placements, date);
-    } catch (e) {
-      status.textContent = e.message;
-    }
-  }
+    const qty = parts[3] ? Number(parts[3].replace(/[^\d.-]/g,"")) : null;
 
-  function render(rows, date) {
-    if (!rows.length) {
-      document.getElementById("table").innerHTML =
-        "<div class='small'>No placements</div>";
-      return;
-    }
-
-    const html = rows.map(p => `
-      <tr class="${p.actualQuantityCY != null ? "placed" : ""}">
-        <td><b>${p.description}</b><br><span class="small">${p.jobNumber || ""}</span></td>
-        <td>${p.orderQuantityCY ?? "-"}</td>
-        <td>${p.actualQuantityCY ?? "-"}</td>
-        <td>
-          <button class="btn btn-danger"
-            onclick="del('${date}','${p.id}')">
-            Delete
-          </button>
-        </td>
-      </tr>
-    `).join("");
-
-    document.getElementById("table").innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>Description</th>
-            <th>Ordered CY</th>
-            <th>Actual CY</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>${html}</tbody>
-      </table>
-    `;
-  }
-
-  async function del(date, id) {
-    if (!confirm("Delete this placement? This cannot be undone.")) return;
-
-    await fetch(deleteUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, placementId: id })
+    placements.push({
+      id: `${date}-${i+1}`,
+      pourDate: date,
+      time: parts[0],
+      jobNumber: parts[1],
+      description: parts[2],
+      orderQuantityCY: isNaN(qty) ? null : qty
     });
-
-    load();
   }
 
-  document.getElementById("viewDate").value = today();
+  return placements;
+}
+
+function preview() {
+  const rows = document.getElementById("rows").value;
+  const date = document.getElementById("scheduleDate").value;
+  const parsed = parse(rows, date);
+  document.getElementById("previewStatus").textContent =
+    `Parsed ${parsed.length} placements`;
+}
+
+async function save() {
+  const rows = document.getElementById("rows").value;
+  const date = document.getElementById("scheduleDate").value;
+  const placements = parse(rows, date);
+
+  if (!placements.length) {
+    alert("No valid rows");
+    return;
+  }
+
+  await fetch(saveUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date, placements })
+  });
+
+  alert("Schedule saved");
   load();
+}
+
+async function load() {
+  const date = document.getElementById("viewDate").value;
+  const res = await fetch(`${getUrl}?date=${date}`);
+  const json = await res.json();
+
+  document.getElementById("viewStatus").textContent =
+    `Loaded ${json.placements.length} placements`;
+
+  render(json.placements, date);
+}
+
+async function del(date, id) {
+  if (!confirm("Delete this placement?")) return;
+  await fetch(deleteUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date, placementId: id })
+  });
+  load();
+}
+
+function render(rows, date) {
+  if (!rows.length) {
+    document.getElementById("table").innerHTML = "No placements";
+    return;
+  }
+
+  const html = rows.map(p => `
+    <tr class="${p.actualQuantityCY != null ? "placed" : ""}">
+      <td>
+        <b>${p.description}</b><br>
+        ${p.time} · ${p.jobNumber}
+        ${p.ticketKeys ? `
+          <div class="ticketRow">
+            ${p.ticketKeys.map(k =>
+              `<a href="${ticketUrl}${k}" target="_blank">
+                <img class="ticketThumb" src="${ticketUrl}${k}">
+              </a>`
+            ).join("")}
+          </div>` : ""}
+      </td>
+      <td>${p.orderQuantityCY ?? "-"}</td>
+      <td>${p.actualQuantityCY ?? "-"}</td>
+      <td>
+        <button class="deleteBtn" onclick="del('${date}','${p.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join("");
+
+  document.getElementById("table").innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Ordered CY</th>
+          <th>Actual CY</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>${html}</tbody>
+    </table>
+  `;
+}
+
+load();
 </script>
+
 </body>
 </html>
