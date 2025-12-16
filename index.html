@@ -1,485 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Concrete Schedule Admin</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        max-width: 1150px;
-        margin: 20px auto;
-        padding: 0 16px;
-        background: #f5f5f5;
-      }
-      h1 { margin-bottom: 4px; }
-      p { color: #555; }
+<head>
+  <meta charset="UTF-8" />
+  <title>Concrete Schedule Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 16px;
+      background: #f5f5f5;
+    }
+    h1 { margin-bottom: 6px; }
 
-      .card {
-        background: #ffffff;
-        border-radius: 10px;
-        padding: 16px;
-        margin-top: 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
 
-      label {
-        display: block;
-        margin-top: 12px;
-        font-weight: 700;
-        font-size: 14px;
-      }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #eee;
+      padding: 10px;
+      vertical-align: top;
+    }
+    th {
+      font-size: 12px;
+      color: #666;
+      text-align: left;
+    }
 
-      input[type="date"], textarea, button {
-        margin-top: 6px;
-        width: 100%;
-        box-sizing: border-box;
-      }
+    .placed { background: #e0f7e9; }
+    .btn {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-danger {
+      color: #b00020;
+      border-color: #b00020;
+    }
+    .small { font-size: 12px; color: #666; }
+  </style>
+</head>
 
-      textarea {
-        min-height: 220px;
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        font-size: 13px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        white-space: pre;
-      }
+<body>
+  <h1>Concrete Schedule Admin</h1>
 
-      button {
-        padding: 10px 12px;
-        font-size: 14px;
-        cursor: pointer;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        background: #fff;
-      }
+  <div class="card">
+    <label>Date</label>
+    <input id="viewDate" type="date" />
+    <button class="btn" onclick="load()">Refresh</button>
+    <div class="small" id="status"></div>
+    <div id="table"></div>
+  </div>
 
-      .row {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px;
-      }
-      @media (min-width: 900px) {
-        .row { grid-template-columns: 1fr 1fr; }
-      }
+<script>
+  const getUrl = "/.netlify/functions/getSchedule";
+  const deleteUrl = "/.netlify/functions/deletePlacement";
 
-      .hint {
-        font-size: 12px;
-        color: #666;
-        line-height: 1.4;
-      }
+  function today() {
+    return new Date().toISOString().slice(0,10);
+  }
 
-      .status {
-        margin-top: 10px;
-        font-size: 14px;
-      }
+  async function load() {
+    const date = document.getElementById("viewDate").value;
+    const status = document.getElementById("status");
+    status.textContent = "Loading…";
 
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-        font-size: 13px;
-      }
-      th, td {
-        border-bottom: 1px solid #eee;
-        padding: 10px 8px;
-        vertical-align: top;
-      }
-      th {
-        text-align: left;
-        font-size: 12px;
-        color: #666;
+    try {
+      const res = await fetch(`${getUrl}?date=${date}`);
+      const json = await res.json();
+
+      if (!json.ok) {
+        status.textContent = "Error loading schedule";
+        return;
       }
 
-      .placedRow {
-        background: #e0f7e9;
-      }
-      .pill {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 800;
-      }
-      .pillPlaced { background: #27ae60; color: #fff; }
-      .pillOpen { background: #ddd; color: #333; }
+      status.textContent = `Loaded ${json.placements.length} placements`;
+      render(json.placements, date);
+    } catch (e) {
+      status.textContent = e.message;
+    }
+  }
 
-      .small { font-size: 12px; color: #666; }
+  function render(rows, date) {
+    if (!rows.length) {
+      document.getElementById("table").innerHTML =
+        "<div class='small'>No placements</div>";
+      return;
+    }
 
-      .topBar {
-        display: flex;
-        gap: 10px;
-        align-items: flex-end;
-        flex-wrap: wrap;
-      }
-      .topBar > div { min-width: 220px; flex: 1; }
+    const html = rows.map(p => `
+      <tr class="${p.actualQuantityCY != null ? "placed" : ""}">
+        <td><b>${p.description}</b><br><span class="small">${p.jobNumber || ""}</span></td>
+        <td>${p.orderQuantityCY ?? "-"}</td>
+        <td>${p.actualQuantityCY ?? "-"}</td>
+        <td>
+          <button class="btn btn-danger"
+            onclick="del('${date}','${p.id}')">
+            Delete
+          </button>
+        </td>
+      </tr>
+    `).join("");
 
-      .miniBtnRow {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .miniBtnRow button { width: auto; }
+    document.getElementById("table").innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Ordered CY</th>
+            <th>Actual CY</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>${html}</tbody>
+      </table>
+    `;
+  }
 
-      .warn { color: #b00020; }
+  async function del(date, id) {
+    if (!confirm("Delete this placement? This cannot be undone.")) return;
 
-      /* Ticket thumbnails */
-      .ticketWrap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-top: 6px;
-      }
-      .ticketThumb {
-        width: 70px;
-        height: 70px;
-        object-fit: cover;
-        border-radius: 8px;
-        border: 1px solid #ddd;
-        background: #f0f0f0;
-      }
-      .ticketLink {
-        display: inline-block;
-        font-size: 12px;
-        margin-top: 4px;
-      }
-    </style>
-  </head>
+    await fetch(deleteUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, placementId: id })
+    });
 
-  <body>
-    <h1>Concrete Schedule Admin</h1>
-    <p>
-      Paste directly from Excel (tabs supported). Save by date. Field app pulls from this schedule.
-      Website shows PLACED + ticket thumbnails once uploaded.
-    </p>
+    load();
+  }
 
-    <div class="card">
-      <div class="row">
-        <div>
-          <label for="date">Schedule date</label>
-          <input id="date" type="date" />
-
-          <div class="hint" style="margin-top: 10px">
-            ✅ Copy rows from Excel and paste below.
-            <br /><br />
-            Expected columns (in order):
-            <br />
-            <b>time</b> | <b>jobNumber</b> | <b>description</b> | <b>orderedCY (optional)</b>
-            <br /><br />
-            Excel paste is usually TAB-separated — this page detects tabs automatically.
-          </div>
-
-          <div class="miniBtnRow">
-            <button id="previewBtn">Preview parse</button>
-            <button id="clearBtn">Clear box</button>
-          </div>
-
-          <div class="status" id="previewStatus"></div>
-        </div>
-
-        <div>
-          <label for="rows">Paste schedule rows from Excel</label>
-          <textarea id="rows" placeholder="Paste directly from Excel here..."></textarea>
-
-          <button id="saveBtn" style="margin-top: 10px;">Save schedule</button>
-          <div class="status" id="saveStatus"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:baseline; gap: 10px; flex-wrap: wrap;">
-        <h2 style="margin:0;">Live schedule view</h2>
-        <div class="small">
-          Auto-refresh: <span id="refreshState">ON</span> (every 10 seconds)
-        </div>
-      </div>
-
-      <div class="topBar" style="margin-top: 10px;">
-        <div>
-          <label for="viewDate">View date</label>
-          <input id="viewDate" type="date" />
-        </div>
-        <div>
-          <button id="refreshBtn">Refresh now</button>
-          <button id="toggleAutoBtn" style="margin-top:6px;">Turn auto-refresh OFF</button>
-        </div>
-      </div>
-
-      <div class="status" id="viewStatus"></div>
-      <div id="tableWrap"></div>
-    </div>
-
-    <script>
-      const saveUrl = "/.netlify/functions/saveSchedule";
-      const getUrl = "/.netlify/functions/getSchedule";
-      const getTicketUrl = "/.netlify/functions/getTicket?key=";
-
-      function todayISO() {
-        return new Date().toISOString().slice(0, 10);
-      }
-
-      function escapeHtml(str) {
-        return String(str ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
-      }
-
-      // --- Parse Excel paste (TAB-separated), fallback to commas ---
-      function parseRowsToPlacements(text, date) {
-        const lines = text
-          .split("\n")
-          .map((l) => l.replace(/\r/g, "").trim())
-          .filter(Boolean);
-
-        const placements = [];
-        let warnings = [];
-
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-
-          let parts = line.split("\t").map((p) => p.trim());
-          if (parts.length < 3) parts = line.split(",").map((p) => p.trim());
-
-          if (parts.length < 3) {
-            warnings.push(`Line ${i + 1}: not enough columns -> "${line}"`);
-            continue;
-          }
-
-          const time = parts[0] || "";
-          const jobNumber = parts[1] || "";
-          const description = parts[2] || "";
-
-          let orderQuantityCY = null;
-          if (parts[3] != null && parts[3] !== "") {
-            const cleaned = String(parts[3]).replace(/[^\d.\-]/g, "");
-            const n = Number(cleaned);
-            orderQuantityCY = Number.isFinite(n) ? n : null;
-          }
-
-          placements.push({
-            id: `${date}-${placements.length + 1}`,
-            pourDate: date,
-            time,
-            jobNumber,
-            description,
-            orderQuantityCY
-          });
-        }
-
-        return { placements, warnings };
-      }
-
-      function ticketThumbsHtml(ticketKeys) {
-        if (!Array.isArray(ticketKeys) || ticketKeys.length === 0) return "";
-
-        const thumbs = ticketKeys
-          .map((k) => {
-            const src = `${getTicketUrl}${encodeURIComponent(k)}`;
-            // Clicking opens full image in a new tab
-            return `
-              <a href="${src}" target="_blank" rel="noopener noreferrer" title="Open ticket">
-                <img class="ticketThumb" src="${src}" alt="ticket" />
-              </a>
-            `;
-          })
-          .join("");
-
-        return `<div class="ticketWrap">${thumbs}</div>`;
-      }
-
-      function renderTable(placements) {
-        const wrap = document.getElementById("tableWrap");
-
-        if (!placements || placements.length === 0) {
-          wrap.innerHTML = "<div class='small'>No schedule saved for this date yet.</div>";
-          return;
-        }
-
-        const rowsHtml = placements
-          .map((p) => {
-            const placed = p.actualQuantityCY != null && p.actualQuantityCY !== "";
-            const pill = placed
-              ? `<span class="pill pillPlaced">PLACED</span>`
-              : `<span class="pill pillOpen">OPEN</span>`;
-
-            const tickets = ticketThumbsHtml(p.ticketKeys);
-
-            return `
-              <tr class="${placed ? "placedRow" : ""}">
-                <td>${pill}</td>
-                <td>
-                  <b>${escapeHtml(p.description)}</b>
-                  <div class="small">${escapeHtml(p.time || "")}</div>
-                  ${tickets}
-                </td>
-                <td>${escapeHtml(p.jobNumber || "")}</td>
-                <td>${p.orderQuantityCY != null ? `${p.orderQuantityCY}` : "-"}</td>
-                <td>${placed ? `${p.actualQuantityCY}` : "-"}</td>
-                <td>${escapeHtml(p.notes || "")}</td>
-              </tr>
-            `;
-          })
-          .join("");
-
-        wrap.innerHTML = `
-          <table>
-            <thead>
-              <tr>
-                <th>Status</th>
-                <th>Description (tickets)</th>
-                <th>Job</th>
-                <th>Ordered CY</th>
-                <th>Actual CY</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml}
-            </tbody>
-          </table>
-          <div class="small" style="margin-top: 10px;">
-            Tickets: click a thumbnail to open full-size.
-          </div>
-        `;
-      }
-
-      async function loadSchedule(date) {
-        const status = document.getElementById("viewStatus");
-        status.textContent = "Loading...";
-        try {
-          const res = await fetch(`${getUrl}?date=${encodeURIComponent(date)}`);
-          const json = await res.json();
-
-          if (!json.ok) {
-            status.textContent = "Error: " + (json.error || "Unknown");
-            renderTable([]);
-            return;
-          }
-
-          status.textContent = `Loaded ${json.placements.length} placements for ${json.date}.`;
-          renderTable(json.placements);
-        } catch (e) {
-          status.textContent = "Error: " + e.message;
-          renderTable([]);
-        }
-      }
-
-      // --- Buttons: preview + clear ---
-      document.getElementById("previewBtn").onclick = () => {
-        const date = document.getElementById("date").value;
-        const rows = document.getElementById("rows").value;
-        const previewStatus = document.getElementById("previewStatus");
-
-        if (!date) {
-          previewStatus.innerHTML = `<span class="warn">Pick a date first.</span>`;
-          return;
-        }
-        if (!rows.trim()) {
-          previewStatus.innerHTML = `<span class="warn">Paste some rows first.</span>`;
-          return;
-        }
-
-        const { placements, warnings } = parseRowsToPlacements(rows, date);
-
-        let msg = `Preview: parsed ${placements.length} placements.`;
-        if (warnings.length) {
-          msg += ` <span class="warn">Warnings: ${warnings.length} line(s) skipped.</span>`;
-        }
-        previewStatus.innerHTML = msg;
-      };
-
-      document.getElementById("clearBtn").onclick = () => {
-        document.getElementById("rows").value = "";
-        document.getElementById("previewStatus").textContent = "";
-        document.getElementById("saveStatus").textContent = "";
-      };
-
-      // --- Save schedule ---
-      document.getElementById("saveBtn").onclick = async () => {
-        const date = document.getElementById("date").value;
-        const rows = document.getElementById("rows").value;
-        const status = document.getElementById("saveStatus");
-
-        if (!date) { status.innerHTML = "<span class='warn'>Please choose a date.</span>"; return; }
-        if (!rows.trim()) { status.innerHTML = "<span class='warn'>Please paste some rows.</span>"; return; }
-
-        const { placements, warnings } = parseRowsToPlacements(rows, date);
-
-        if (placements.length === 0) {
-          status.innerHTML =
-            "<span class='warn'>No valid rows parsed. Make sure you copied rows (time/job/desc).</span>";
-          return;
-        }
-
-        status.textContent = "Saving...";
-        try {
-          const res = await fetch(saveUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date, placements })
-          });
-          const json = await res.json();
-
-          if (!res.ok || !json.ok) {
-            status.innerHTML = "<span class='warn'>Error: " + (json.error || "Unknown") + "</span>";
-            return;
-          }
-
-          status.innerHTML = `Saved ${json.count} placements for ${json.date}.` +
-            (warnings.length ? ` <span class="warn">(${warnings.length} row(s) skipped)</span>` : "");
-
-          const viewDate = document.getElementById("viewDate").value;
-          if (viewDate === date) loadSchedule(viewDate);
-        } catch (e) {
-          status.innerHTML = "<span class='warn'>Error: " + e.message + "</span>";
-        }
-      };
-
-      // --- Live view controls ---
-      let autoRefreshOn = true;
-      let intervalId = null;
-
-      function startAutoRefresh() {
-        stopAutoRefresh();
-        intervalId = setInterval(() => {
-          if (!autoRefreshOn) return;
-          const date = document.getElementById("viewDate").value;
-          if (date) loadSchedule(date);
-        }, 10000);
-      }
-
-      function stopAutoRefresh() {
-        if (intervalId) clearInterval(intervalId);
-        intervalId = null;
-      }
-
-      document.getElementById("refreshBtn").onclick = () => {
-        const date = document.getElementById("viewDate").value;
-        if (date) loadSchedule(date);
-      };
-
-      document.getElementById("toggleAutoBtn").onclick = () => {
-        autoRefreshOn = !autoRefreshOn;
-        document.getElementById("refreshState").textContent = autoRefreshOn ? "ON" : "OFF";
-        document.getElementById("toggleAutoBtn").textContent = autoRefreshOn
-          ? "Turn auto-refresh OFF"
-          : "Turn auto-refresh ON";
-        if (autoRefreshOn) startAutoRefresh();
-        else stopAutoRefresh();
-      };
-
-      // --- Initialize ---
-      const t = todayISO();
-      document.getElementById("date").value = t;
-      document.getElementById("viewDate").value = t;
-
-      loadSchedule(t);
-      startAutoRefresh();
-    </script>
-  </body>
+  document.getElementById("viewDate").value = today();
+  load();
+</script>
+</body>
 </html>
