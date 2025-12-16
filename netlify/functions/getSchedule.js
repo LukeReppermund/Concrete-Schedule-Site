@@ -8,12 +8,13 @@ const corsHeaders = {
 };
 
 exports.handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders, body: "" };
-  }
-
   try {
-    // Netlify Blobs needs this when running in functions
+    // Always respond to preflight
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: corsHeaders, body: "" };
+    }
+
+    // REQUIRED for Netlify Blobs
     connectLambda(event);
 
     const date = event.queryStringParameters?.date;
@@ -21,7 +22,10 @@ exports.handler = async (event) => {
       return {
         statusCode: 400,
         headers: corsHeaders,
-        body: JSON.stringify({ ok: false, error: "Missing ?date=YYYY-MM-DD" }),
+        body: JSON.stringify({
+          ok: false,
+          error: "Missing ?date=YYYY-MM-DD",
+        }),
       };
     }
 
@@ -31,11 +35,9 @@ exports.handler = async (event) => {
     const placements =
       (await scheduleStore.get(`schedule:${date}`, { type: "json" })) || [];
 
-    // This will be used once we add the app -> website live updates
     const actuals =
       (await actualsStore.get(`actuals:${date}`, { type: "json" })) || {};
 
-    // Merge “actuals” into placements
     const merged = placements.map((p) => {
       const a = actuals[p.id];
       return a ? { ...p, ...a } : p;
@@ -44,13 +46,22 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: corsHeaders,
-      body: JSON.stringify({ ok: true, date, placements: merged }),
+      body: JSON.stringify({
+        ok: true,
+        date,
+        placements: merged,
+      }),
     };
   } catch (err) {
+    // IMPORTANT: always return JSON, never HTML
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({ ok: false, error: err.message }),
+      body: JSON.stringify({
+        ok: false,
+        error: err.message,
+        stack: err.stack,
+      }),
     };
   }
 };
