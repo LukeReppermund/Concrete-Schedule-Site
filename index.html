@@ -6,48 +6,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-          sans-serif;
-        max-width: 980px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 1100px;
         margin: 20px auto;
         padding: 0 16px;
         background: #f5f5f5;
       }
-      h1 {
-        margin-bottom: 4px;
-      }
-      p {
-        color: #555;
-      }
+      h1 { margin-bottom: 4px; }
+      p { color: #555; }
+
       .card {
         background: #ffffff;
         border-radius: 10px;
         padding: 16px;
         margin-top: 16px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
+
       label {
         display: block;
         margin-top: 12px;
         font-weight: 700;
         font-size: 14px;
       }
-      input[type="date"],
-      textarea,
-      button {
+
+      input[type="date"], textarea, button {
         margin-top: 6px;
         width: 100%;
         box-sizing: border-box;
       }
+
       textarea {
         min-height: 160px;
         padding: 10px;
         border-radius: 8px;
         border: 1px solid #ccc;
         font-size: 13px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
+
       button {
         padding: 10px 12px;
         font-size: 14px;
@@ -56,32 +53,77 @@
         border: 1px solid #ccc;
         background: #fff;
       }
+
       .row {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 10px;
+        gap: 12px;
       }
-      @media (min-width: 820px) {
-        .row {
-          grid-template-columns: 1fr 1fr;
-        }
+      @media (min-width: 880px) {
+        .row { grid-template-columns: 1fr 1fr; }
       }
-      .status {
-        margin-top: 10px;
-        font-size: 14px;
-      }
-      pre {
-        background: #eee;
-        padding: 10px;
-        border-radius: 8px;
-        font-size: 12px;
-        max-height: 280px;
-        overflow: auto;
-      }
+
       .hint {
         font-size: 12px;
         color: #666;
         line-height: 1.4;
+      }
+
+      .status {
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      th, td {
+        border-bottom: 1px solid #eee;
+        padding: 10px 8px;
+        vertical-align: top;
+      }
+      th {
+        text-align: left;
+        font-size: 12px;
+        color: #666;
+      }
+
+      .placedRow {
+        background: #e0f7e9;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .pillPlaced {
+        background: #27ae60;
+        color: white;
+      }
+      .pillOpen {
+        background: #ddd;
+        color: #333;
+      }
+
+      .small {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .topBar {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+      .topBar > div {
+        min-width: 220px;
+        flex: 1;
       }
     </style>
   </head>
@@ -89,33 +131,25 @@
   <body>
     <h1>Concrete Schedule Admin</h1>
     <p>
-      Paste the schedule rows for a given date, then click <b>Save schedule</b>.
-      The mobile app will load the same date from the API.
+      Save the schedule by date. The website will auto-refresh and show what’s been placed from the field app.
     </p>
 
     <div class="card">
-      <div class="row">
+      <div class="topBar">
         <div>
           <label for="date">Schedule date</label>
           <input id="date" type="date" />
-
           <div class="hint" style="margin-top: 10px">
-            Format (one line per placement):
-            <br />
-            <b>time, jobNumber, description, orderedCY</b>
-            <br /><br />
-            Example:
-            <br />
+            Format (one line per placement):<br />
+            <b>time, jobNumber, description, orderedCY</b><br /><br />
+            Example:<br />
             <code>8:00 AM, K008/15755, Finishing Mill - Coil Handling NW Wall, 60</code>
           </div>
         </div>
 
         <div>
           <label for="rows">Paste schedule rows</label>
-          <textarea
-            id="rows"
-            placeholder="Paste rows here..."
-          ></textarea>
+          <textarea id="rows" placeholder="Paste rows here..."></textarea>
           <button id="saveBtn">Save schedule</button>
           <div class="status" id="saveStatus"></div>
         </div>
@@ -123,24 +157,36 @@
     </div>
 
     <div class="card">
-      <h2>Check what’s saved for a date</h2>
-      <div class="row">
-        <div>
-          <label for="checkDate">Date</label>
-          <input id="checkDate" type="date" />
-          <button id="loadBtn">Load saved schedule</button>
-        </div>
-        <div>
-          <label>Result</label>
-          <pre id="output">(nothing loaded yet)</pre>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap: 10px; flex-wrap: wrap;">
+        <h2 style="margin:0;">Live schedule view</h2>
+        <div class="small">
+          Auto-refresh: <span id="refreshState">ON</span> (every 10 seconds)
         </div>
       </div>
+
+      <div class="topBar" style="margin-top: 10px;">
+        <div>
+          <label for="viewDate">View date</label>
+          <input id="viewDate" type="date" />
+        </div>
+        <div>
+          <button id="refreshBtn">Refresh now</button>
+          <button id="toggleAutoBtn" style="margin-top:6px;">Turn auto-refresh OFF</button>
+        </div>
+      </div>
+
+      <div class="status" id="viewStatus"></div>
+
+      <div id="tableWrap"></div>
     </div>
 
     <script>
-      // This uses your own Netlify Functions on the same site.
       const saveUrl = "/.netlify/functions/saveSchedule";
       const getUrl = "/.netlify/functions/getSchedule";
+
+      function todayISO() {
+        return new Date().toISOString().slice(0, 10);
+      }
 
       function parseRowsToPlacements(text, date) {
         const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -149,12 +195,8 @@
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
 
-          // Try comma split first; if not enough columns, try tab
           let parts = line.split(",").map((p) => p.trim());
-          if (parts.length < 3) {
-            parts = line.split("\t").map((p) => p.trim());
-          }
-
+          if (parts.length < 3) parts = line.split("\t").map((p) => p.trim());
           if (parts.length < 3) continue;
 
           const time = parts[0] || "";
@@ -171,28 +213,96 @@
             orderQuantityCY: Number.isFinite(orderQuantityCY) ? orderQuantityCY : null
           });
         }
-
         return placements;
       }
 
+      function renderTable(placements) {
+        const wrap = document.getElementById("tableWrap");
+
+        if (!placements || placements.length === 0) {
+          wrap.innerHTML = "<div class='small'>No schedule saved for this date yet.</div>";
+          return;
+        }
+
+        const rowsHtml = placements.map((p) => {
+          const placed = p.actualQuantityCY != null && p.actualQuantityCY !== "";
+          const pill = placed
+            ? `<span class="pill pillPlaced">PLACED</span>`
+            : `<span class="pill pillOpen">OPEN</span>`;
+
+          return `
+            <tr class="${placed ? "placedRow" : ""}">
+              <td>${pill}</td>
+              <td><b>${escapeHtml(p.description || "")}</b><div class="small">${escapeHtml(p.time || "")}</div></td>
+              <td>${escapeHtml(p.jobNumber || "")}</td>
+              <td>${p.orderQuantityCY != null ? `${p.orderQuantityCY}` : "-"}</td>
+              <td>${placed ? `${p.actualQuantityCY}` : "-"}</td>
+              <td>${escapeHtml(p.notes || "")}</td>
+            </tr>
+          `;
+        }).join("");
+
+        wrap.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Description</th>
+                <th>Job</th>
+                <th>Ordered CY</th>
+                <th>Actual CY</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        `;
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      async function loadSchedule(date) {
+        const status = document.getElementById("viewStatus");
+        status.textContent = "Loading...";
+        try {
+          const res = await fetch(`${getUrl}?date=${encodeURIComponent(date)}`);
+          const json = await res.json();
+
+          if (!json.ok) {
+            status.textContent = "Error: " + (json.error || "Unknown");
+            renderTable([]);
+            return;
+          }
+
+          status.textContent = `Loaded ${json.placements.length} placements for ${json.date}.`;
+          renderTable(json.placements);
+        } catch (e) {
+          status.textContent = "Error: " + e.message;
+          renderTable([]);
+        }
+      }
+
+      // Save schedule
       document.getElementById("saveBtn").onclick = async () => {
         const date = document.getElementById("date").value;
         const rows = document.getElementById("rows").value;
         const status = document.getElementById("saveStatus");
 
-        if (!date) {
-          status.textContent = "Please choose a date.";
-          return;
-        }
-        if (!rows.trim()) {
-          status.textContent = "Please paste some rows.";
-          return;
-        }
+        if (!date) { status.textContent = "Please choose a date."; return; }
+        if (!rows.trim()) { status.textContent = "Please paste some rows."; return; }
 
         const placements = parseRowsToPlacements(rows, date);
         if (placements.length === 0) {
-          status.textContent =
-            "No valid rows found. Make sure each line has at least: time, job, description.";
+          status.textContent = "No valid rows found. Each line needs: time, job, description (and optional orderedCY).";
           return;
         }
 
@@ -203,37 +313,64 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ date, placements })
           });
-
           const json = await res.json();
+
           if (!res.ok || !json.ok) {
             status.textContent = "Error: " + (json.error || "Unknown error");
             return;
           }
 
           status.textContent = `Saved ${json.count} placements for ${json.date}.`;
+
+          // Immediately refresh the live view if it matches the date we saved
+          const viewDate = document.getElementById("viewDate").value;
+          if (viewDate === date) loadSchedule(viewDate);
         } catch (e) {
           status.textContent = "Error: " + e.message;
         }
       };
 
-      document.getElementById("loadBtn").onclick = async () => {
-        const date = document.getElementById("checkDate").value;
-        const output = document.getElementById("output");
+      // Live view controls
+      let autoRefreshOn = true;
+      let intervalId = null;
 
-        if (!date) {
-          output.textContent = "Please choose a date.";
-          return;
-        }
+      function startAutoRefresh() {
+        stopAutoRefresh();
+        intervalId = setInterval(() => {
+          if (!autoRefreshOn) return;
+          const date = document.getElementById("viewDate").value;
+          if (date) loadSchedule(date);
+        }, 10000);
+      }
 
-        output.textContent = "Loading...";
-        try {
-          const res = await fetch(`${getUrl}?date=${encodeURIComponent(date)}`);
-          const json = await res.json();
-          output.textContent = JSON.stringify(json, null, 2);
-        } catch (e) {
-          output.textContent = "Error: " + e.message;
-        }
+      function stopAutoRefresh() {
+        if (intervalId) clearInterval(intervalId);
+        intervalId = null;
+      }
+
+      document.getElementById("refreshBtn").onclick = () => {
+        const date = document.getElementById("viewDate").value;
+        if (date) loadSchedule(date);
       };
+
+      document.getElementById("toggleAutoBtn").onclick = () => {
+        autoRefreshOn = !autoRefreshOn;
+        document.getElementById("refreshState").textContent = autoRefreshOn ? "ON" : "OFF";
+        document.getElementById("toggleAutoBtn").textContent = autoRefreshOn
+          ? "Turn auto-refresh OFF"
+          : "Turn auto-refresh ON";
+        if (autoRefreshOn) startAutoRefresh();
+        else stopAutoRefresh();
+      };
+
+      // Initialize dates
+      const t = todayISO();
+      document.getElementById("date").value = t;
+      document.getElementById("viewDate").value = t;
+
+      // Initial load + auto-refresh
+      loadSchedule(t);
+      startAutoRefresh();
     </script>
   </body>
 </html>
