@@ -13,8 +13,8 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Required when running in Lambda compatibility mode
-    connectLambda(event); // 
+    // Netlify Blobs needs this when running in functions
+    connectLambda(event);
 
     const date = event.queryStringParameters?.date;
     if (!date) {
@@ -25,16 +25,17 @@ exports.handler = async (event) => {
       };
     }
 
-    const scheduleStore = getStore("schedules"); // 
+    const scheduleStore = getStore("schedules");
     const actualsStore = getStore("actuals");
 
-    const scheduleKey = `schedule:${date}`;
-    const actualsKey = `actuals:${date}`;
+    const placements =
+      (await scheduleStore.get(`schedule:${date}`, { type: "json" })) || [];
 
-    const placements = (await scheduleStore.get(scheduleKey, { type: "json" })) || [];
-    const actuals = (await actualsStore.get(actualsKey, { type: "json" })) || {};
+    // This will be used once we add the app -> website live updates
+    const actuals =
+      (await actualsStore.get(`actuals:${date}`, { type: "json" })) || {};
 
-    // Merge “actuals” into placements (website + app both benefit)
+    // Merge “actuals” into placements
     const merged = placements.map((p) => {
       const a = actuals[p.id];
       return a ? { ...p, ...a } : p;
